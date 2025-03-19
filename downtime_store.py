@@ -1,5 +1,6 @@
 import time
 import datetime
+import pandas as pd
 from pymongo import MongoClient  # type: ignore
 from downtime import DowntimeCalculator
 
@@ -27,7 +28,9 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, downtime_data, 
     
     if last_entry:
         last_downtime_data = last_entry.get("downtime_data", {})
-        updated_downtime_data = {}
+        df_last = pd.DataFrame.from_dict(last_downtime_data, orient='index')
+        df_new = pd.DataFrame.from_dict(downtime_data, orient='index')
+        
         merged_machines = {}
         unmerged_machines = {}
         
@@ -51,6 +54,7 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, downtime_data, 
                 else:
                     unmerged_machines[machine_id] = new_downtime
             else:
+                # If the machine wasn't in the previous entry, store it separately
                 unmerged_machines[machine_id] = new_downtime
         
         if merged_machines:
