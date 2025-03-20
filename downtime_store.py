@@ -54,7 +54,6 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, downtime_data, 
                 else:
                     unmerged_machines[machine_id] = new_downtime
             else:
-                # If the machine wasn't in the previous entry, store it separately
                 unmerged_machines[machine_id] = new_downtime
         
         if merged_machines:
