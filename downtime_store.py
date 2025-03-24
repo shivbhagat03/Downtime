@@ -31,7 +31,7 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
     unmerged_periods = [] 
 
     has_downtime = bool(downtime_data.get("downtime_periods"))
-    has_connection_loss = bool(downtime_data.get("connection_loss_periods"))
+    has_connection_loss = bool(downtime_data.get("connection_lost_periods"))
 
     if last_entry and has_downtime:
         last_downtime = last_entry.get("downtime_data", {})
@@ -63,21 +63,32 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
     else:
         unmerged_periods = downtime_data.get("downtime_periods", [])
 
-    if not last_entry and has_connection_loss:
-        print(f"Storing initial connection loss for {machine_id}.")
+    # If only connection lost periods exist, store only that
+    if not has_downtime and has_connection_loss:
+        print(f"Storing only connection loss for {machine_id}.")
         data = {
             "timestamp": datetime.datetime.now().isoformat() + 'Z',
             "start_time": start_time_ist,
             "end_time": end_time_ist,
             "machine_id": machine_id,
-            "downtime_data": {"downtime_periods": [], "total_downtime_duration": 0},
-            "connection_loss_data": downtime_data["connection_loss_periods"]
+            "connection_lost_data": {
+                "connection_lost_periods": downtime_data["connection_lost_periods"],
+                "total_connection_lost_duration": downtime_data["total_connection_lost_duration"]
+            }
         }
         collection.insert_one(data)
         client.close()
         return
 
-    if unmerged_periods or has_connection_loss:
+    # If merged and no other unmerged downtimes exist, do not store an empty downtime document
+    if merged and not unmerged_periods:
+        print(f"Downtime merged with previous entry for {machine_id}. No new downtime document stored.")
+        client.close()
+        return
+
+    # If downtime exists (with multiple unmerged periods), store the document correctly
+    if unmerged_periods:
+        print(f"Storing downtime for {machine_id}.")
         data = {
             "timestamp": datetime.datetime.now().isoformat() + 'Z',
             "start_time": start_time_ist,
@@ -85,10 +96,16 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
             "machine_id": machine_id,
             "downtime_data": {
                 "downtime_periods": unmerged_periods,
-                "total_downtime_duration": sum(p["duration_seconds"] for p in unmerged_periods) if has_downtime else 0
-            },
-            "connection_loss_data": downtime_data.get("connection_loss_periods", [])
+                "total_downtime_duration": sum(p["duration_seconds"] for p in unmerged_periods)
+            }
         }
+
+        if has_connection_loss:
+            data["connection_lost_data"] = {
+                "connection_lost_periods": downtime_data["connection_lost_periods"],
+                "total_connection_lost_duration": downtime_data["total_connection_lost_duration"]
+            }
+
         collection.insert_one(data)
         print(f"Stored downtime for {machine_id} in a single document.")
 
