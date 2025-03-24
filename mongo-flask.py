@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from pymongo import MongoClient                 # type: ignore
+from pymongo import MongoClient  # type: ignore
 
 app = Flask(__name__)
 
@@ -14,8 +14,6 @@ collection = db[COLLECTION_NAME]
 
 @app.route("/fetch_downtime", methods=["GET"])
 def fetch_downtime():
-    """Fetches downtime records for a specific machine in a given time range."""
-    
     machine_id = request.args.get("machine_id")  
     start_time = request.args.get("start_time")  
     end_time = request.args.get("end_time")      
@@ -23,24 +21,23 @@ def fetch_downtime():
     if not machine_id or not start_time or not end_time:
         return jsonify({"error": "Missing required parameters (machine_id, start_time, end_time)"}), 400
 
-    # MongoDB Query to fetch records within the time range
     query = {
+        "machine_id": machine_id,
         "start_time": {"$gte": start_time},
         "end_time": {"$lte": end_time},
-        f"downtime_data.{machine_id}": {"$exists": True}  # Ensure machineId exists
     }
 
-    print("Executing Query:", query)  # Debugging Step
+    print("Executing Query:", query)  
 
-    results = list(collection.find(query, {"_id": 0, f"downtime_data.{machine_id}": 1}))
+    results = list(collection.find(query, {"_id": 0, "downtime_data": 1}))
 
     if not results:
         return jsonify({"message": "No downtime records found for the given machine in the specified time range."}), 404
 
-    # Extract relevant machine downtime data
+
     response = {
-        "machineId": machine_id,
-        "downtime_records": [record["downtime_data"][machine_id] for record in results]
+        "machine_id": machine_id,
+        "downtime_records": [record["downtime_data"] for record in results]
     }
 
     return jsonify(response), 200
