@@ -1,7 +1,7 @@
 import time
 import datetime
 import pandas as pd
-from pymongo import MongoClient  # type: ignore
+from pymongo import MongoClient                                           # type: ignore
 from downtime import DowntimeCalculator
 
 MONGO_URL = "mongodb://localhost:27017/"
@@ -63,7 +63,6 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
     else:
         unmerged_periods = downtime_data.get("downtime_periods", [])
 
-    # If only connection lost periods exist, store only that
     if not has_downtime and has_connection_loss:
         print(f"Storing only connection loss for {machine_id}.")
         data = {
@@ -80,13 +79,11 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
         client.close()
         return
 
-    # If merged and no other unmerged downtimes exist, do not store an empty downtime document
     if merged and not unmerged_periods:
         print(f"Downtime merged with previous entry for {machine_id}. No new downtime document stored.")
         client.close()
         return
 
-    # If downtime exists (with multiple unmerged periods), store the document correctly
     if unmerged_periods:
         print(f"Storing downtime for {machine_id}.")
         data = {
