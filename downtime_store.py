@@ -4,10 +4,10 @@ import pandas as pd
 from pymongo import MongoClient  # type: ignore
 from downtime import DowntimeCalculator
 
-MONGO_URL = "mongodb://localhost:27017/"
+MONGO_URL = "mongodb://host.docker.internal:27017/"
 DB_NAME = "machine_data"
 COLLECTION_NAME = "data_downtime"
-MACHINE_IDS = ["FEGOR", "HITACHI_600T", "HMT_201T","HMT_203T"]
+MACHINE_IDS = ["FEGOR", "HITACHI_600T", "HMT_201T", "HMT_203T"]
 
 calculator = DowntimeCalculator()
 
@@ -21,14 +21,14 @@ def get_last_entry(mongo_url, db_name, collection_name, machine_id):
     client.close()
     return last_entry
 
-def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, downtime_data, start_time_ist, end_time_ist):
+def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, downtime_data, start_time_utc, end_time_utc):
     client = MongoClient(mongo_url)
     db = client[db_name]
     collection = db[collection_name]
     
     last_entry = get_last_entry(mongo_url, db_name, collection_name, machine_id)
     merged = False
-    unmerged_periods = [] 
+    unmerged_periods = []
 
     has_downtime = bool(downtime_data.get("downtime_periods"))
     has_connection_loss = bool(downtime_data.get("connection_lost_periods"))
@@ -56,20 +56,19 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
             if merged:
                 collection.update_one(
                     {"_id": last_entry["_id"]},
-                    {"$set": {"end_time": end_time_ist, "downtime_data": last_downtime}}
+                    {"$set": {"end_time": end_time_utc, "downtime_data": last_downtime}}
                 )
                 print(f"Merged downtime for {machine_id}.")
 
     else:
         unmerged_periods = downtime_data.get("downtime_periods", [])
 
-    # If only connection lost periods exist, store only that
     if not has_downtime and has_connection_loss:
         print(f"Storing only connection loss for {machine_id}.")
         data = {
-            "timestamp": datetime.datetime.now().isoformat() + 'Z',
-            "start_time": start_time_ist,
-            "end_time": end_time_ist,
+            "timestamp": datetime.datetime.utcnow().isoformat() + 'Z',
+            "start_time": start_time_utc,
+            "end_time": end_time_utc,
             "machine_id": machine_id,
             "connection_lost_data": {
                 "connection_lost_periods": downtime_data["connection_lost_periods"],
@@ -80,19 +79,17 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
         client.close()
         return
 
-    # If merged and no other unmerged downtimes exist, do not store an empty downtime document
     if merged and not unmerged_periods:
         print(f"Downtime merged with previous entry for {machine_id}. No new downtime document stored.")
         client.close()
         return
 
-    # If downtime exists (with multiple unmerged periods), store the document correctly
     if unmerged_periods:
         print(f"Storing downtime for {machine_id}.")
         data = {
-            "timestamp": datetime.datetime.now().isoformat() + 'Z',
-            "start_time": start_time_ist,
-            "end_time": end_time_ist,
+            "timestamp": datetime.datetime.utcnow().isoformat() + 'Z',
+            "start_time": start_time_utc,
+            "end_time": end_time_utc,
             "machine_id": machine_id,
             "downtime_data": {
                 "downtime_periods": unmerged_periods,
@@ -113,18 +110,18 @@ def merge_or_store_downtime(mongo_url, db_name, collection_name, machine_id, dow
 
 def main():
     while True:
-        now_ist = datetime.datetime.now().replace(second=0, microsecond=0)
-        start_time_utc = (now_ist - datetime.timedelta(minutes=30)).isoformat() + 'Z'
-        end_time_utc = now_ist.isoformat() + 'Z'
+        now_utc = datetime.datetime.utcnow().replace(second=0, microsecond=0)
+        start_time_utc = (now_utc - datetime.timedelta(minutes=30)).isoformat() + 'Z'
+        end_time_utc = now_utc.isoformat() + 'Z'
 
-        print(f"Checking downtime for slot: {start_time_utc} to {end_time_utc} IST...")
+        print(f"Checking downtime for slot: {start_time_utc} to {end_time_utc} UTC...", flush=True)
 
         for machine_id in MACHINE_IDS:
             downtime_data = calculator.calculate_downtime_and_connection_lost(start_time_utc, end_time_utc, machine_id)
             
             merge_or_store_downtime(MONGO_URL, DB_NAME, COLLECTION_NAME, machine_id, downtime_data, start_time_utc, end_time_utc)
 
-        print("Sleeping for 30 minutes...")
+        print("Sleeping for 30 minutes...", flush=True)
         time.sleep(1800)
 
 if __name__ == "__main__":
