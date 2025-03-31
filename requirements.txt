@@ -1,0 +1,7 @@
+pymongo
+pandas
+python-dotenv
+influxdb-client
+flask
+datetime
+pytz
